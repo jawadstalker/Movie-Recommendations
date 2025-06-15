@@ -1,8 +1,8 @@
 # Movie-Recommendations
 
----
 
-````markdown
+
+
 # Movie Recommendation System Using Semantic Search & Embeddings
 
 ## Overview
@@ -13,40 +13,67 @@ This project implements a movie recommendation system that takes a user input se
 
 ## How to Use
 
-1. **Clone the repository**  
-   ```bash
-   git clone https://github.com/yourusername/your-repo-name.git
-   cd your-repo-name
-````
+--
 
-2. **Install dependencies**
-   Make sure you have Python 3.7+ installed. Then run:
+## Installation and Run (without cloning)
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+1 **Install dependencies**
 
-3. **Download the dataset**
-   Download the TMDB movie metadata and credits datasets from Kaggle:
+Make sure you have **Python 3.7+** installed.
+Then run:
 
-   * [TMDB Movie Metadata](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
+```bash
+pip install -r requirements.txt
+```
 
-   Place `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` in the `data/` directory.
+➥ Here’s a `requirements.txt` you can use:
 
-4. **Run the recommendation script**
-   In a Python environment or Google Colab, run the script:
-
-   ```bash
-   python recommend.py
-   ```
-
-   or if using Jupyter/Colab, run the cells sequentially.
-
-5. **Enter your movie preference**
-   When prompted, input a sentence describing the type of movie you want (e.g., "I love fantasy adventure movies").
-   The system will display the top 5 movie titles with their summaries.
+```txt
+pandas
+numpy
+scikit-learn
+sentence-transformers
+matplotlib
+seaborn
+```
 
 ---
+
+2 **Download the dataset**
+
+Download the TMDB movie metadata and credits datasets from Kaggle:
+
+* [TMDB Movie Metadata](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
+
+Save `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` into your **current directory** (say, `.`).
+
+---
+
+3 **Run the recommendation script**
+
+Open `Python` or **Google Colab**, put your code (like `recommend.py`) in the directory with the CSV files, then run:
+
+```bash
+python recommend.py
+```
+
+Or if you’re using **Jupyter/Colab**, simply execute the cells in your notebook.
+
+---
+
+4 **Enter your movie preference**
+
+When prompted, input a sentence describing the kind of movie you’d like to watch.
+For example:
+
+```
+I love fantasy adventure movies
+```
+
+The system will respond by displaying **the top 5 recommended movies with their summaries and poster images**.
+
+---
+
 
 ## Project Structure
 
