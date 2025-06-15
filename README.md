@@ -13,7 +13,7 @@ This project implements a movie recommendation system that takes a user input se
 
 ## How to Use
 
---
+
 
 ## Installation and Run (without cloning)
 
