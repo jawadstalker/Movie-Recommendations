@@ -1,9 +1,7 @@
-# Movie-Recommendations
-
-
 
 
 # Movie Recommendation System Using Semantic Search & Embeddings
+![Logo](logo.png)
 
 ## Overview
 
