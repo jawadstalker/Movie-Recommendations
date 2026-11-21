@@ -97,22 +97,25 @@ def apply_feedback(results, embeddings, feedback, top_k=10, base_weight=0.8):
         movie_id for movie_id, action in state.items()
         if action in {"dislike", "watchlist"}
     }
-    ranked = results.copy()
-    if "id" not in ranked:
+    if "id" not in results:
         raise ValueError("Recommendation results must contain TMDB movie IDs.")
-    ranked_ids = pd.to_numeric(ranked["id"], errors="coerce")
-    ranked = ranked.loc[~ranked_ids.isin(excluded)].copy()
-    if ranked.empty:
-        return ranked
 
+    # Build the preference vector before filtering: disliked items are removed
+    # from the candidate list, but their embeddings must still inform the profile.
+    all_ids = pd.to_numeric(results["id"], errors="coerce")
     positive_indices, negative_indices = [], []
-    for index, movie_id in zip(ranked.index, ranked_ids.loc[ranked.index]):
-        action = state.get(int(movie_id)) if pd.notna(movie_id) else None
-        if action == "like" and 0 <= int(index) < len(embeddings):
+    for index, movie_id in zip(results.index, all_ids):
+        if pd.isna(movie_id) or not 0 <= int(index) < len(embeddings):
+            continue
+        action = state.get(int(movie_id))
+        if action == "like":
             positive_indices.append(int(index))
-        elif action == "dislike" and 0 <= int(index) < len(embeddings):
+        elif action == "dislike":
             negative_indices.append(int(index))
 
+    ranked = results.loc[~all_ids.isin(excluded)].copy()
+    if ranked.empty:
+        return ranked
     if not positive_indices and not negative_indices:
         return ranked.head(top_k)
 
