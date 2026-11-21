@@ -162,3 +162,17 @@ Optional arguments:
 The runner reports Precision@K, Recall@K, MAP@K, NDCG@K, and Hit Rate@K for both systems, plus absolute metric deltas. It writes `reports/evaluation_summary.json` and `reports/evaluation_per_user.csv`.
 
 Metrics are averaged across users with a relevant held-out item. The current protocol is a leave-one-last-interaction-out temporal test, not a full sequential ranking benchmark. Treat the results as a comparative offline evaluation, not proof of real-world user satisfaction.
+
+
+## Local user feedback and personalization
+
+The desktop app supports lightweight, local personalization:
+
+- **Like** and **Dislike** buttons record explicit movie feedback.
+- **Add to watchlist** saves a movie for later; the watchlist can be opened from the main window and entries can be removed.
+- Feedback is stored in `.data/feedback.json` on the current machine. It is not uploaded or shared.
+- The latest action for a movie is its active state. A later Like can replace a Dislike, and removing a watchlist entry does not erase its other history.
+- Disliked and watchlisted movies are filtered from recommendations. Liked and disliked movie embeddings create a small preference profile that reranks candidates while retaining the original semantic/hybrid score.
+- Use the **Local profile** field to keep feedback separate between people using the same installation. The MovieLens user ID remains a separate optional input for collaborative filtering.
+
+The feedback layer is deliberately lightweight and does not retrain the transformer model. To reset a local profile, close the app and remove that profile's entry from `.data/feedback.json`.

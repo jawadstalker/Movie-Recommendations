@@ -10,6 +10,12 @@ from sentence_transformers import SentenceTransformer
 
 from recommender import MODEL_NAME, build_movie_texts, get_movie_embeddings, load_movies
 from hybrid import load_movielens_data, build_collaborative_model, recommend_hybrid
+from feedback import (
+    apply_feedback,
+    get_user_feedback,
+    get_watchlist,
+    record_feedback,
+)
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -20,7 +26,7 @@ class MovieApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Movie Recommender")
-        self.root.geometry("650x280")
+        self.root.geometry("680x330")
         self.root.configure(bg=BG)
         self.root.resizable(False, False)
         self.model = None
@@ -28,27 +34,31 @@ class MovieApp:
         self.embeddings = None
         self.collaborative_model = None
         self.poster_images = []
+        self.profile_id = tk.StringVar(value="default")
 
-        ttk.Label(root, text="Describe the movie you want to watch", font=("Helvetica", 16, "bold")).pack(pady=(24, 12))
+        ttk.Label(root, text="Describe the movie you want to watch", font=("Helvetica", 16, "bold")).pack(pady=(20, 10))
         self.query = tk.Entry(root, width=58, font=("Helvetica", 12))
         self.query.pack(ipady=7, padx=24)
         self.query.bind("<Return>", lambda _event: self.search())
 
         user_controls = ttk.Frame(root)
-        user_controls.pack(pady=(10, 0))
+        user_controls.pack(pady=(9, 0))
         ttk.Label(user_controls, text="MovieLens user ID (optional)").pack(side="left", padx=(0, 8))
         self.user_id = tk.StringVar()
-        ttk.Entry(user_controls, textvariable=self.user_id, width=14).pack(side="left")
+        ttk.Entry(user_controls, textvariable=self.user_id, width=12).pack(side="left", padx=(0, 18))
+        ttk.Label(user_controls, text="Local profile").pack(side="left", padx=(0, 8))
+        ttk.Entry(user_controls, textvariable=self.profile_id, width=14).pack(side="left")
 
         controls = ttk.Frame(root)
         controls.pack(pady=10)
         ttk.Label(controls, text="Results").pack(side="left", padx=(0, 8))
         self.count = tk.IntVar(value=5)
         ttk.Spinbox(controls, from_=1, to=20, width=5, textvariable=self.count).pack(side="left")
-        self.search_button = tk.Button(controls, text="Find movies", command=self.search, bg=ACCENT, relief="flat", padx=18, pady=8)
-        self.search_button.pack(side="left", padx=16)
+        self.search_button = tk.Button(controls, text="Find movies", command=self.search, bg=ACCENT, relief="flat", padx=18, pady=8, state="disabled")
+        self.search_button.pack(side="left", padx=12)
+        tk.Button(controls, text="My watchlist", command=self.show_watchlist, relief="flat", padx=12, pady=8).pack(side="left")
         self.status = tk.StringVar(value="Loading movie data and language model…")
-        ttk.Label(root, textvariable=self.status, wraplength=580).pack(pady=8)
+        ttk.Label(root, textvariable=self.status, wraplength=620).pack(pady=8)
         threading.Thread(target=self.initialize, daemon=True).start()
 
     def initialize(self):
@@ -63,8 +73,8 @@ class MovieApp:
                 try:
                     ratings, links = load_movielens_data()
                     collaborative = build_collaborative_model(ratings, links, movies)
-                except Exception:
-                    collaborative = None
+                except Exception as exc:
+                    print(f"Collaborative model unavailable: {exc}")
             self.root.after(0, lambda: self.ready(movies, model, embeddings, collaborative))
         except Exception as exc:
             self.root.after(0, lambda error=str(exc): self.failed(error))
@@ -81,6 +91,9 @@ class MovieApp:
         self.search_button.configure(state="disabled")
         messagebox.showerror("Could not start Movie Recommender", error)
 
+    def _active_profile(self):
+        return self.profile_id.get().strip() or "default"
+
     def search(self):
         query = self.query.get().strip()
         if not query:
@@ -95,16 +108,31 @@ class MovieApp:
             results = recommend_hybrid(
                 query, self.movies, self.embeddings, self.model,
                 user_id=user_id, collaborative_model=self.collaborative_model,
-                top_k=self.count.get(),
+                top_k=len(self.movies),
             )
+            feedback = get_user_feedback(self._active_profile())
+            results = apply_feedback(results, self.embeddings, feedback, top_k=self.count.get())
             self.show_results(results)
         except Exception as exc:
             messagebox.showerror("Recommendation error", str(exc))
 
+    def save_feedback(self, movie, action, status):
+        try:
+            movie_id = int(movie["id"])
+            title = str(movie.get("title", "Untitled"))
+            record_feedback(self._active_profile(), movie_id, title, action)
+            status.set({
+                "like": "Liked — future recommendations will adapt.",
+                "dislike": "Disliked — this movie will be hidden.",
+                "watchlist": "Saved to your watchlist.",
+            }[action])
+        except Exception as exc:
+            messagebox.showerror("Could not save feedback", str(exc))
+
     def show_results(self, results):
         window = tk.Toplevel(self.root)
         window.title("Your movie recommendations")
-        window.geometry("900x760")
+        window.geometry("920x780")
         canvas = tk.Canvas(window, bg=BG, highlightthickness=0)
         scrollbar = ttk.Scrollbar(window, orient="vertical", command=canvas.yview)
         content = ttk.Frame(canvas)
@@ -115,7 +143,7 @@ class MovieApp:
         scrollbar.pack(side="right", fill="y")
         self.poster_images = []
 
-        for rank, (_, movie) in enumerate(results.iterrows(), start=1):
+        for rank, (movie_index, movie) in enumerate(results.iterrows(), start=1):
             card = ttk.Frame(content, padding=14)
             card.pack(fill="x", padx=12, pady=8)
             poster = self.load_poster(movie.get("poster_path"))
@@ -126,12 +154,48 @@ class MovieApp:
             details.pack(side="left", fill="x", expand=True)
             title = str(movie.get("title", "Untitled"))
             year = str(movie.get("release_date", ""))[:4]
-            score = float(movie.get("hybrid_score", movie.get("similarity", 0)))
+            score = float(movie.get("personalized_score", movie.get("hybrid_score", movie.get("similarity", 0))))
             method = str(movie.get("recommendation_type", "content-based"))
             ttk.Label(details, text=f"{rank}. {title} ({year})", font=("Helvetica", 14, "bold")).pack(anchor="w")
             ttk.Label(details, text=f"Recommendation score: {score:.1%} · {method}", foreground="#555").pack(anchor="w", pady=(3, 6))
             overview = str(movie.get("overview", "") or "No overview available.")
             ttk.Label(details, text=overview, wraplength=650, justify="left").pack(anchor="w")
+            feedback_status = tk.StringVar(value="")
+            actions = ttk.Frame(details)
+            actions.pack(anchor="w", pady=(8, 0))
+            tk.Button(actions, text="Like", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "like", s)).pack(side="left", padx=(0, 5))
+            tk.Button(actions, text="Dislike", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "dislike", s)).pack(side="left", padx=5)
+            tk.Button(actions, text="Add to watchlist", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "watchlist", s)).pack(side="left", padx=5)
+            ttk.Label(details, textvariable=feedback_status, foreground="#287a48").pack(anchor="w", pady=(4, 0))
+
+    def show_watchlist(self):
+        try:
+            items = get_watchlist(get_user_feedback(self._active_profile()))
+            window = tk.Toplevel(self.root)
+            window.title("My watchlist")
+            window.geometry("520x520")
+            ttk.Label(window, text=f"Watchlist · {self._active_profile()}", font=("Helvetica", 14, "bold")).pack(pady=12)
+            if not items:
+                ttk.Label(window, text="Your watchlist is empty.").pack(pady=20)
+                return
+            for item in items:
+                row = ttk.Frame(window, padding=8)
+                row.pack(fill="x", padx=12)
+                ttk.Label(row, text=item.get("title", f"Movie {item['movie_id']}")).pack(side="left", fill="x", expand=True)
+                tk.Button(
+                    row, text="Remove",
+                    command=lambda movie=item, parent=row: self.remove_from_watchlist(movie, parent),
+                ).pack(side="right")
+
+        except Exception as exc:
+            messagebox.showerror("Could not load watchlist", str(exc))
+
+    def remove_from_watchlist(self, item, row):
+        try:
+            record_feedback(self._active_profile(), item["movie_id"], item.get("title", ""), "remove_watchlist")
+            row.destroy()
+        except Exception as exc:
+            messagebox.showerror("Could not update watchlist", str(exc))
 
     @staticmethod
     def load_poster(path):
