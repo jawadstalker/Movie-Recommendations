@@ -1,6 +1,7 @@
-pandas
-numpy
-scikit-learn
-sentence-transformers
-matplotlib
-seaborn
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+sentence-transformers>=2.6
+Pillow>=10.0
+requests>=2.31
+pytest>=8.0

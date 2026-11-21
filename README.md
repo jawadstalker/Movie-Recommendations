@@ -1,174 +1,114 @@
+# Movie Recommendations
 
+A semantic movie recommender that matches a natural-language description to films in the TMDB 5000 dataset. It uses Sentence Transformers embeddings and cosine similarity, with a lightweight Tkinter desktop interface.
 
-# Movie Recommendation System Using Semantic Search & Embeddings
-![Logo](logo.png)
+## Features
 
-## Overview
+- Natural-language search rather than exact keyword matching
+- Semantic representations built from title, tagline, overview, genres, cast, and keywords
+- Cached, normalized embeddings — the transformer model does not re-encode the full catalogue on every launch
+- Optional release-year and genre filters in the Python recommendation API
+- Configurable result count and poster previews
+- Clear validation for missing or malformed dataset files
 
-This project implements a movie recommendation system that takes a user input sentence describing their movie preferences and returns the top 5 most semantically similar movies from the TMDB dataset. It uses modern natural language processing techniques with pre-trained transformer-based embeddings to understand the meaning behind user queries and find relevant films, not just by keyword matching but by semantic similarity.
+## Requirements
 
----
+- Python 3.9+
+- The two CSV files from the [TMDB 5000 Movie Dataset](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
 
-## How to Use
-
-
-
-## Installation and Run (without cloning)
-
-1 **Install dependencies**
-
-Make sure you have **Python 3.7+** installed.
-Then run:
+## Setup
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/jawadstalker/Movie-Recommendations.git
+cd Movie-Recommendations
+python -m venv .venv
 ```
 
-➥ Here’s a `requirements.txt` you can use:
-
-```txt
-pandas
-numpy
-scikit-learn
-sentence-transformers
-matplotlib
-seaborn
-```
-
----
-
-2 **Download the dataset**
-
-Download the TMDB movie metadata and credits datasets from Kaggle:
-
-* [TMDB Movie Metadata](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
-
-Save `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` into your **current directory** (say, `.`).
-
----
-
-3 **Run the recommendation script**
-
-Open `Python` or **Google Colab**, put your code (like `recommend.py`) in the directory with the CSV files, then run:
+Activate the environment:
 
 ```bash
-python recommend.py
+# Windows
+.venv\Scripts\activate
+
+# macOS / Linux
+source .venv/bin/activate
 ```
 
-Or if you’re using **Jupyter/Colab**, simply execute the cells in your notebook.
+Install dependencies:
 
----
-
-4 **Enter your movie preference**
-
-When prompted, input a sentence describing the kind of movie you’d like to watch.
-For example:
-
-```
-I love fantasy adventure movies
+```bash
+python -m pip install -r requirements.txt
 ```
 
-The system will respond by displaying **the top 5 recommended movies with their summaries and poster images**.
+Download `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` from Kaggle and place both files in the project root. The CSV files are not included because of their size and licensing.
 
----
+Run the desktop app:
 
+```bash
+python movie.py
+```
 
-## Project Structure
+The first launch downloads the sentence-transformer model and computes movie embeddings. This can take a while depending on your hardware. Later launches reuse `.cache/movie_embeddings.npz`. Delete that cache file to force a rebuild.
 
-* `recommend.py`: Main script that loads data, computes embeddings, and handles recommendations.
-* `data/`: Folder containing datasets.
-* `plots/`: (Optional) Folder with analysis plots.
+## Python API
 
----
+The recommendation pipeline can also be used without the desktop UI:
 
-## Technology & Libraries Used
+```python
+from sentence_transformers import SentenceTransformer
+from recommender import (
+    MODEL_NAME,
+    build_movie_texts,
+    get_movie_embeddings,
+    load_movies,
+    recommend_movies,
+)
 
-* **Python 3.7+**
-* **Pandas**: For data manipulation.
-* **Sentence Transformers** (`sentence-transformers`): To generate semantic embeddings from text.
-* **Scikit-learn**: For similarity computations.
-* **Matplotlib/Seaborn**: For data visualization.
-* **Requests & PIL**: For fetching and displaying poster images.
-* **IPython.display**: For image display in notebooks.
+movies = load_movies("data")
+model = SentenceTransformer(MODEL_NAME)
+texts = build_movie_texts(movies)
+embeddings = get_movie_embeddings(texts, model)
 
----
+results = recommend_movies(
+    "A thoughtful science-fiction film about memory and identity",
+    movies,
+    embeddings,
+    model,
+    top_k=10,
+)
+print(results[["title", "release_date", "similarity"]])
+```
 
-## Data Analysis and Visualizations
+The API supports `min_year`, `max_year`, and `genre` filters. The GUI currently exposes the query and result count.
 
-To better understand the structure of our movie embeddings and their relationships, we performed a few key analyses:
+## Project structure
 
-### 1 PCA Projection (Scatter Plot)
+```text
+.
+├── movie.py                 # Tkinter desktop application
+├── recommender.py           # Data preparation, embedding cache, ranking
+├── tests/
+│   └── test_recommender.py  # Unit tests
+├── requirements.txt
+└── README.md
+```
 
-To visualize high-dimensional embeddings in a 2D space, we applied **Principal Component Analysis (PCA)** to reduce the dimensions from 768 to 2.  
-This lets us plot all the movies in a scatter plot.  
-Movies that are close together in this space tend to be semantically similar in their content.
+## Model and limitations
 
-![PCA scatter plot](pca_scatter.png)
+The default model is `sentence-transformers/all-MiniLM-L6-v2`, selected as a smaller and faster alternative to larger transformer encoders. It is suitable for a local prototype, though recommendation quality should be evaluated against a labelled or user-rated test set before treating rankings as objective.
 
-### 2 Distribution of Similarities ( Histogram )
+Similarity is semantic relevance, not a probability that a user will like a film. Poster images are fetched from TMDB's image CDN when available; poster loading requires an internet connection.
 
-We also examined the distribution of cosine similarity scores between a sample movie and all other films.  
-This shows us whether most films are dissimilar or if there are many close neighbors.  
-A large peak at low similarity suggests that most films are not related, while a small peak at high similarity signals a small set of very similar films.
+## Tests
 
-![Similarity distribution](similarity_histogram.png)
+```bash
+python -m pytest
+```
 
-### 3 Heatmap of Similarities
+## Data and attribution
 
-To visualize pairwise similarity amongst a small set of films, we constructed a **heatmap**.  
-Here, each cell shows how close two films are in semantic space.  
-This highlights clusters of related films — groups with higher similarity form block-like structures on the diagonal.
+- Movie metadata: [TMDB 5000 Movie Dataset on Kaggle](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
+- Embedding model: [Sentence Transformers](https://www.sbert.net/)
+- Poster images: [The Movie Database (TMDB)](https://www.themoviedb.org/)
 
-![Heatmap of similarity](similarity_heatmap.png)
-
----
-
-These visualization techniques collectively help us:
-- Validate the semantic representation of our embeddings.
-- Identify clusters or groups of related films.
-- Better interpret the results of our recommender algorithm.
-
-
-
----
-
-## How the Code Works
-
-1. **Loading Data**:
-   The TMDB movie metadata and credits datasets are loaded and merged on the `id` column to enrich movie information.
-
-2. **Text Preprocessing**:
-   Relevant textual fields such as movie titles and overviews are combined to form a single text input for embedding.
-
-3. **Embedding Generation**:
-   The `sentence-transformers` library with the `"all-mpnet-base-v2"` model is used to convert movie descriptions and user queries into high-dimensional vectors that capture semantic meaning.
-
-4. **Similarity Search**:
-   Using cosine similarity, the user input vector is compared against all movie vectors to find the closest matches.
-
-5. **Results Display**:
-   Top 5 matching movies are returned with titles, overviews, and poster images (if available).
-
----
-
-## References
-
-* [TMDB Dataset on Kaggle](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
-* [Sentence Transformers Documentation](https://www.sbert.net/)
-* [TMDB API for Posters](https://developers.themoviedb.org/3/getting-started/introduction)
-* [Cosine Similarity in Scikit-learn](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.cosine_similarity.html)
-
----
-
-## Future Improvements
-
-* Integrate TMDB API to fetch real-time poster images and trailers.
-* Build a web-based UI with frameworks like Streamlit or Gradio for better user experience.
-* Expand dataset to include user reviews and genres for richer recommendations.
-* Add caching for embeddings to speed up repeated queries.
-
----
-
-Thank you for checking out this project! Feel free to contribute or raise issues.
-
-
+This is an educational project and is not affiliated with TMDB.
