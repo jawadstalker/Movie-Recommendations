@@ -140,3 +140,25 @@ print(results[["title", "similarity", "collaborative_score", "hybrid_score"]])
 ```
 
 The default blend assigns 65% weight to semantic relevance and 35% to collaborative preference when a collaborative prediction exists. Movies without collaborative evidence keep their content score. Unknown users automatically use the content-based cold-start path. MovieLens files are optional and are not committed to the repository.
+
+## Recommendation evaluation
+
+Use the evaluation runner to compare Content-Based and Hybrid ranking with a per-user temporal holdout. The latest interaction for each eligible user is held out; earlier interactions are used to build the collaborative model and the user's preference profile. This prevents the held-out interaction from leaking into training.
+
+Install the project requirements and run:
+
+```bash
+python evaluate.py --k 10 --threshold 4.0
+```
+
+Optional arguments:
+
+- `--k 10`: number of recommendations evaluated per user
+- `--threshold 4.0`: ratings at or above this value count as relevant
+- `--min-train-ratings 3`: minimum historical interactions required before the held-out event
+- `--content-weight 0.65`: semantic-content weight in the hybrid score
+- `--max-users 100`: optional smaller run for a quick smoke test
+
+The runner reports Precision@K, Recall@K, MAP@K, NDCG@K, and Hit Rate@K for both systems, plus absolute metric deltas. It writes `reports/evaluation_summary.json` and `reports/evaluation_per_user.csv`.
+
+Metrics are averaged across users with a relevant held-out item. The current protocol is a leave-one-last-interaction-out temporal test, not a full sequential ranking benchmark. Treat the results as a comparative offline evaluation, not proof of real-world user satisfaction.
