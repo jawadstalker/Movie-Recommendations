@@ -117,7 +117,7 @@ This is an educational project and is not affiliated with TMDB.
 
 The optional hybrid engine combines semantic content relevance with collaborative signals from MovieLens user ratings. Without a known user and the MovieLens files, it falls back to content-based recommendations.
 
-Download a MovieLens dataset containing `ratings.csv` and `links.csv` and place both files in the project root. The links file maps MovieLens movie IDs to TMDB IDs, so ratings can be aligned with the TMDB 5000 catalogue.
+Download the MovieLens **latest-small** dataset (recommended for this local prototype), which contains `ratings.csv` and `links.csv`, and place both files in the project root. Avoid the full MovieLens dataset on low-memory machines because its ratings file is substantially larger. The links file maps MovieLens movie IDs to TMDB IDs, so ratings can be aligned with the TMDB 5000 catalogue.
 
 ```python
 from sentence_transformers import SentenceTransformer
