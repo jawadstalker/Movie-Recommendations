@@ -8,7 +8,8 @@ import requests
 from PIL import Image, ImageTk
 from sentence_transformers import SentenceTransformer
 
-from recommender import MODEL_NAME, build_movie_texts, get_movie_embeddings, load_movies, recommend_movies
+from recommender import MODEL_NAME, build_movie_texts, get_movie_embeddings, load_movies
+from hybrid import load_movielens_data, build_collaborative_model, recommend_hybrid
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -25,6 +26,7 @@ class MovieApp:
         self.model = None
         self.movies = None
         self.embeddings = None
+        self.collaborative_model = None
         self.poster_images = []
 
         ttk.Label(root, text="Describe the movie you want to watch", font=("Helvetica", 16, "bold")).pack(pady=(24, 12))
@@ -32,8 +34,14 @@ class MovieApp:
         self.query.pack(ipady=7, padx=24)
         self.query.bind("<Return>", lambda _event: self.search())
 
+        user_controls = ttk.Frame(root)
+        user_controls.pack(pady=(10, 0))
+        ttk.Label(user_controls, text="MovieLens user ID (optional)").pack(side="left", padx=(0, 8))
+        self.user_id = tk.StringVar()
+        ttk.Entry(user_controls, textvariable=self.user_id, width=14).pack(side="left")
+
         controls = ttk.Frame(root)
-        controls.pack(pady=14)
+        controls.pack(pady=10)
         ttk.Label(controls, text="Results").pack(side="left", padx=(0, 8))
         self.count = tk.IntVar(value=5)
         ttk.Spinbox(controls, from_=1, to=20, width=5, textvariable=self.count).pack(side="left")
@@ -49,13 +57,23 @@ class MovieApp:
             model = SentenceTransformer(MODEL_NAME)
             texts = build_movie_texts(movies)
             embeddings = get_movie_embeddings(texts, model)
-            self.root.after(0, lambda: self.ready(movies, model, embeddings))
+            collaborative = None
+            from pathlib import Path
+            if Path("ratings.csv").is_file() and Path("links.csv").is_file():
+                try:
+                    ratings, links = load_movielens_data()
+                    collaborative = build_collaborative_model(ratings, links, movies)
+                except Exception:
+                    collaborative = None
+            self.root.after(0, lambda: self.ready(movies, model, embeddings, collaborative))
         except Exception as exc:
             self.root.after(0, lambda error=str(exc): self.failed(error))
 
-    def ready(self, movies, model, embeddings):
+    def ready(self, movies, model, embeddings, collaborative=None):
         self.movies, self.model, self.embeddings = movies, model, embeddings
-        self.status.set(f"Ready — {len(movies):,} movies loaded. Embeddings are cached for the next launch.")
+        self.collaborative_model = collaborative
+        mode = "Hybrid recommendations available." if collaborative else "Content-based mode (add MovieLens ratings.csv and links.csv for hybrid recommendations)."
+        self.status.set(f"Ready — {len(movies):,} movies loaded. {mode}")
         self.search_button.configure(state="normal")
 
     def failed(self, error):
@@ -72,7 +90,13 @@ class MovieApp:
             messagebox.showinfo("Please wait", "The movie data and model are still loading.")
             return
         try:
-            results = recommend_movies(query, self.movies, self.embeddings, self.model, top_k=self.count.get())
+            raw_user_id = self.user_id.get().strip()
+            user_id = int(raw_user_id) if raw_user_id.isdigit() else raw_user_id or None
+            results = recommend_hybrid(
+                query, self.movies, self.embeddings, self.model,
+                user_id=user_id, collaborative_model=self.collaborative_model,
+                top_k=self.count.get(),
+            )
             self.show_results(results)
         except Exception as exc:
             messagebox.showerror("Recommendation error", str(exc))
@@ -102,9 +126,10 @@ class MovieApp:
             details.pack(side="left", fill="x", expand=True)
             title = str(movie.get("title", "Untitled"))
             year = str(movie.get("release_date", ""))[:4]
-            score = float(movie.get("similarity", 0))
+            score = float(movie.get("hybrid_score", movie.get("similarity", 0)))
+            method = str(movie.get("recommendation_type", "content-based"))
             ttk.Label(details, text=f"{rank}. {title} ({year})", font=("Helvetica", 14, "bold")).pack(anchor="w")
-            ttk.Label(details, text=f"Semantic match: {score:.1%}", foreground="#555").pack(anchor="w", pady=(3, 6))
+            ttk.Label(details, text=f"Recommendation score: {score:.1%} · {method}", foreground="#555").pack(anchor="w", pady=(3, 6))
             overview = str(movie.get("overview", "") or "No overview available.")
             ttk.Label(details, text=overview, wraplength=650, justify="left").pack(anchor="w")
 
