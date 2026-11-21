@@ -112,3 +112,31 @@ python -m pytest
 - Poster images: [The Movie Database (TMDB)](https://www.themoviedb.org/)
 
 This is an educational project and is not affiliated with TMDB.
+
+## Hybrid recommendations (optional MovieLens data)
+
+The optional hybrid engine combines semantic content relevance with collaborative signals from MovieLens user ratings. Without a known user and the MovieLens files, it falls back to content-based recommendations.
+
+Download a MovieLens dataset containing `ratings.csv` and `links.csv` and place both files in the project root. The links file maps MovieLens movie IDs to TMDB IDs, so ratings can be aligned with the TMDB 5000 catalogue.
+
+```python
+from sentence_transformers import SentenceTransformer
+from recommender import MODEL_NAME, build_movie_texts, get_movie_embeddings, load_movies
+from hybrid import load_movielens_data, build_collaborative_model, recommend_hybrid
+
+movies = load_movies()
+model = SentenceTransformer(MODEL_NAME)
+embeddings = get_movie_embeddings(build_movie_texts(movies), model)
+ratings, links = load_movielens_data()
+collaborative = build_collaborative_model(ratings, links, movies)
+
+results = recommend_hybrid(
+    "A mystery thriller with an unreliable narrator",
+    movies, embeddings, model,
+    user_id=1, collaborative_model=collaborative, top_k=10,
+    content_weight=0.65,
+)
+print(results[["title", "similarity", "collaborative_score", "hybrid_score"]])
+```
+
+The default blend assigns 65% weight to semantic relevance and 35% to collaborative preference when a collaborative prediction exists. Movies without collaborative evidence keep their content score. Unknown users automatically use the content-based cold-start path. MovieLens files are optional and are not committed to the repository.
