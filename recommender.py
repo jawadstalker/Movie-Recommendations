@@ -125,7 +125,7 @@ def recommend_movies(query, movies, embeddings, model, top_k=5, min_year=None, m
     candidates = np.arange(len(movies))
 
     if min_year is not None or max_year is not None:
-        years = pd.to_numeric(movies.get("release_date"), errors="coerce").dt.year
+        years = pd.to_datetime(movies.get("release_date"), errors="coerce").dt.year
         if min_year is not None:
             candidates = candidates[years.iloc[candidates].fillna(0).to_numpy() >= min_year]
         if max_year is not None:
