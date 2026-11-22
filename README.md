@@ -176,3 +176,17 @@ The desktop app supports lightweight, local personalization:
 - Use the **Local profile** field to keep feedback separate between people using the same installation. The MovieLens user ID remains a separate optional input for collaborative filtering.
 
 The feedback layer is deliberately lightweight and does not retrain the transformer model. To reset a local profile, close the app and remove that profile's entry from `.data/feedback.json`.
+
+
+## Dynamic user taste profile
+
+The local recommender derives a dynamic metadata profile from each local profile's latest Like and Dislike states:
+
+- Genre, cast, director, and keyword preferences are accumulated separately.
+- Positive feedback increases affinity; negative feedback decreases it.
+- Older feedback gradually loses influence (a 120-day half-life), allowing the profile to adapt as interests change.
+- Watchlist entries are not treated as positive ratings; they remain excluded from recommendation results until removed.
+- A **Taste profile** window summarizes learned likes and dislikes. Candidate ranking blends the existing semantic/hybrid score with metadata affinity.
+- The profile is rebuilt from the local feedback file when needed; no model retraining or additional large model is required.
+
+The profile is an interpretable preference summary based only on explicit movie feedback.

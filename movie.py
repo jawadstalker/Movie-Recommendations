@@ -16,6 +16,7 @@ from feedback import (
     get_watchlist,
     record_feedback,
 )
+from taste_profile import build_taste_profile, apply_taste_profile, describe_taste_profile
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -56,7 +57,8 @@ class MovieApp:
         ttk.Spinbox(controls, from_=1, to=20, width=5, textvariable=self.count).pack(side="left")
         self.search_button = tk.Button(controls, text="Find movies", command=self.search, bg=ACCENT, relief="flat", padx=18, pady=8, state="disabled")
         self.search_button.pack(side="left", padx=12)
-        tk.Button(controls, text="My watchlist", command=self.show_watchlist, relief="flat", padx=12, pady=8).pack(side="left")
+        tk.Button(controls, text="My watchlist", command=self.show_watchlist, relief="flat", padx=12, pady=8).pack(side="left", padx=(0, 6))
+        tk.Button(controls, text="Taste profile", command=self.show_taste_profile, relief="flat", padx=12, pady=8).pack(side="left")
         self.status = tk.StringVar(value="Loading movie data and language model…")
         ttk.Label(root, textvariable=self.status, wraplength=620).pack(pady=8)
         threading.Thread(target=self.initialize, daemon=True).start()
@@ -111,7 +113,9 @@ class MovieApp:
                 top_k=len(self.movies),
             )
             feedback = get_user_feedback(self._active_profile())
-            results = apply_feedback(results, self.embeddings, feedback, top_k=self.count.get())
+            results = apply_feedback(results, self.embeddings, feedback, top_k=len(results))
+            profile = build_taste_profile(self.movies, feedback)
+            results = apply_taste_profile(results, profile, top_k=self.count.get())
             self.show_results(results)
         except Exception as exc:
             messagebox.showerror("Recommendation error", str(exc))
@@ -167,6 +171,31 @@ class MovieApp:
             tk.Button(actions, text="Dislike", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "dislike", s)).pack(side="left", padx=5)
             tk.Button(actions, text="Add to watchlist", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "watchlist", s)).pack(side="left", padx=5)
             ttk.Label(details, textvariable=feedback_status, foreground="#287a48").pack(anchor="w", pady=(4, 0))
+
+    def show_taste_profile(self):
+        try:
+            feedback = get_user_feedback(self._active_profile())
+            profile = build_taste_profile(self.movies, feedback)
+            window = tk.Toplevel(self.root)
+            window.title("My taste profile")
+            window.geometry("620x620")
+            ttk.Label(window, text=f"Taste profile · {self._active_profile()}",
+                      font=("Helvetica", 15, "bold")).pack(pady=(16, 6))
+            ttk.Label(window, text=f"{profile['liked_count']} liked · {profile['disliked_count']} disliked",
+                      foreground="#555").pack(pady=(0, 12))
+            if profile["feedback_count"] == 0:
+                ttk.Label(window, text="Your profile is still empty. Like or dislike a few recommendations to help the system learn.",
+                          wraplength=540, justify="center").pack(padx=24, pady=24)
+                return
+            for label, positive, negative in describe_taste_profile(profile):
+                section = ttk.LabelFrame(window, text=label, padding=12)
+                section.pack(fill="x", padx=18, pady=8)
+                positive_text = ", ".join(name for name, _ in positive) if positive else "Not enough evidence yet"
+                negative_text = ", ".join(name for name, _ in negative) if negative else "None identified"
+                ttk.Label(section, text="Likes: " + positive_text, wraplength=520).pack(anchor="w")
+                ttk.Label(section, text="Avoids: " + negative_text, wraplength=520).pack(anchor="w", pady=(5, 0))
+        except Exception as exc:
+            messagebox.showerror("Could not build taste profile", str(exc))
 
     def show_watchlist(self):
         try:
