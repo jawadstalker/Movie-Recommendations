@@ -19,6 +19,7 @@ from feedback import (
 from taste_profile import build_taste_profile, apply_taste_profile, describe_taste_profile
 from explainability import explain_recommendations
 from mmr import select_diverse_recommendations
+from ab_testing import assign_variant, record_exposure, record_outcome, summarize_experiment
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -38,6 +39,7 @@ class MovieApp:
         self.collaborative_model = None
         self.poster_images = []
         self.profile_id = tk.StringVar(value="default")
+        self.current_impressions = {}
 
         ttk.Label(root, text="Describe the movie you want to watch", font=("Helvetica", 16, "bold")).pack(pady=(20, 10))
         self.query = tk.Entry(root, width=58, font=("Helvetica", 12))
@@ -61,6 +63,7 @@ class MovieApp:
         self.search_button.pack(side="left", padx=12)
         tk.Button(controls, text="My watchlist", command=self.show_watchlist, relief="flat", padx=12, pady=8).pack(side="left", padx=(0, 6))
         tk.Button(controls, text="Taste profile", command=self.show_taste_profile, relief="flat", padx=12, pady=8).pack(side="left")
+        tk.Button(controls, text="A/B report", command=self.show_experiment_report, relief="flat", padx=12, pady=8).pack(side="left", padx=(6, 0))
         self.status = tk.StringVar(value="Loading movie data and language model…")
         ttk.Label(root, textvariable=self.status, wraplength=620).pack(pady=8)
         threading.Thread(target=self.initialize, daemon=True).start()
@@ -114,27 +117,52 @@ class MovieApp:
                 user_id=user_id, collaborative_model=self.collaborative_model,
                 top_k=len(self.movies),
             )
-            feedback = get_user_feedback(self._active_profile())
+            profile_id = self._active_profile()
+            variant = assign_variant(profile_id)
+            feedback = get_user_feedback(profile_id)
             results = apply_feedback(results, self.embeddings, feedback, top_k=len(results))
             profile = build_taste_profile(self.movies, feedback)
             results = apply_taste_profile(results, profile, top_k=len(results))
-            results = select_diverse_recommendations(
-                results, self.embeddings, top_k=self.count.get(),
-                diversity_weight=0.35,
-            )
+            if variant == "B":
+                results = select_diverse_recommendations(
+                    results, self.embeddings, top_k=self.count.get(),
+                    diversity_weight=0.35,
+                )
+            else:
+                results = results.head(self.count.get()).copy()
             results = explain_recommendations(
                 results, self.movies, self.embeddings,
                 feedback=feedback, taste_profile=profile,
+            )
+            self.current_impressions = {}
+            if not results.empty:
+                try:
+                    exposure = record_exposure(profile_id, variant, results["id"].tolist())
+                    self.current_impressions = {
+                        int(movie_id): exposure["impression_id"]
+                        for movie_id in results["id"].tolist()
+                    }
+                except Exception as logging_error:
+                    print(f"A/B exposure logging unavailable: {logging_error}")
+            self.status.set(
+                f"Ready — A/B experiment {variant}: "
+                f"{'baseline ranking' if variant == 'A' else 'MMR diversity ranking'}."
             )
             self.show_results(results)
         except Exception as exc:
             messagebox.showerror("Recommendation error", str(exc))
 
-    def save_feedback(self, movie, action, status):
+    def save_feedback(self, movie, action, status, impression_id=None):
         try:
             movie_id = int(movie["id"])
             title = str(movie.get("title", "Untitled"))
-            record_feedback(self._active_profile(), movie_id, title, action)
+            profile_id = self._active_profile()
+            record_feedback(profile_id, movie_id, title, action)
+            if impression_id:
+                try:
+                    record_outcome(profile_id, impression_id, movie_id, action)
+                except Exception as logging_error:
+                    print(f"A/B outcome logging unavailable: {logging_error}")
             status.set({
                 "like": "Liked — future recommendations will adapt.",
                 "dislike": "Disliked — this movie will be hidden.",
@@ -186,10 +214,39 @@ class MovieApp:
             feedback_status = tk.StringVar(value="")
             actions = ttk.Frame(details)
             actions.pack(anchor="w", pady=(8, 0))
-            tk.Button(actions, text="Like", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "like", s)).pack(side="left", padx=(0, 5))
-            tk.Button(actions, text="Dislike", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "dislike", s)).pack(side="left", padx=5)
-            tk.Button(actions, text="Add to watchlist", command=lambda m=movie.copy(), s=feedback_status: self.save_feedback(m, "watchlist", s)).pack(side="left", padx=5)
+            impression_id = self.current_impressions.get(int(movie["id"]))
+            tk.Button(actions, text="Like", command=lambda m=movie.copy(), s=feedback_status, i=impression_id: self.save_feedback(m, "like", s, i)).pack(side="left", padx=(0, 5))
+            tk.Button(actions, text="Dislike", command=lambda m=movie.copy(), s=feedback_status, i=impression_id: self.save_feedback(m, "dislike", s, i)).pack(side="left", padx=5)
+            tk.Button(actions, text="Add to watchlist", command=lambda m=movie.copy(), s=feedback_status, i=impression_id: self.save_feedback(m, "watchlist", s, i)).pack(side="left", padx=5)
             ttk.Label(details, textvariable=feedback_status, foreground="#287a48").pack(anchor="w", pady=(4, 0))
+
+    def show_experiment_report(self):
+        try:
+            report = summarize_experiment()
+            variants = report["variants"]
+            lines = [
+                "A/B experiment: " + report["experiment"],
+                "",
+                "Rates are based on recommended movie impressions, not unique visitors.",
+                "",
+            ]
+            for variant, label in (("A", "Baseline (without MMR)"), ("B", "MMR (diversity weight 0.35)")):
+                data = variants[variant]
+                lines.extend([
+                    f"{variant} — {label}",
+                    f"  Impressions: {data['impressions']}",
+                    f"  Profiles: {data['profiles']}",
+                    f"  Recommended items: {data['recommended_items']}",
+                    f"  Likes: {data['likes']} ({data['like_rate']:.1%})",
+                    f"  Dislikes: {data['dislikes']} ({data['dislike_rate']:.1%})",
+                    f"  Watchlist adds: {data['watchlist_adds']} ({data['watchlist_rate']:.1%})",
+                    f"  Explicit engagement rate: {data['engagement_rate']:.1%}",
+                    "",
+                ])
+            lines.append("Treat small samples as directional; this report does not calculate statistical significance.")
+            messagebox.showinfo("A/B experiment report", "\\n".join(lines))
+        except Exception as exc:
+            messagebox.showerror("Could not build A/B report", str(exc))
 
     def show_taste_profile(self):
         try:

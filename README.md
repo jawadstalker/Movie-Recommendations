@@ -228,3 +228,18 @@ python evaluate.py --k 10 --mmr-weights 0.20,0.35,0.50 --mmr-candidate-pool 100
 Use `--mmr-weights` to compare other values between 0 and 1, and `--mmr-candidate-pool` to change the reranking shortlist size (it must be at least K). The JSON summary includes each weight's ranking metrics, ILD, and evaluated-user count; the per-user CSV includes NDCG and ILD for each tested weight.
 
 Choose a weight by considering both ranking quality (especially NDCG@K/MAP@K) and diversity (ILD). A higher ILD alone is not evidence of better recommendations.
+
+
+## Local A/B testing for ranking strategies
+
+The desktop app includes a lightweight local experiment named `ranking_mmr_v1`:
+
+- **Variant A:** the personalized relevance ranking without MMR.
+- **Variant B:** the same candidate pipeline reranked with MMR (`diversity_weight=0.35`).
+- A profile is assigned consistently to one variant using a SHA-256 hash of the experiment name and local profile ID. The raw profile ID is not written to the experiment log.
+- Each displayed recommendation list is recorded as an exposure. Like, Dislike, and Add to watchlist actions are attributed to the exact impression and movie that generated them.
+- The **A/B report** button in the main window summarizes impressions, profiles, recommendation counts, explicit likes, dislikes, watchlist additions, and item-level feedback rates.
+
+Events are stored locally in `.data/experiment_events.jsonl`. No raw search query, profile ID, or movie title is stored in this experiment log. The existing feedback store remains separate.
+
+Rates use the number of displayed movie items as their denominator; they are not click-through rates. The report is descriptive and does not calculate confidence intervals or statistical significance. Collect enough independent profiles and exposure data before making a product decision. Local profiles are assignment units, not guaranteed unique people, and repeat exposures from one profile are not independent observations.
