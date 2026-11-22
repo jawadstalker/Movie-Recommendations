@@ -244,7 +244,7 @@ class MovieApp:
                     "",
                 ])
             lines.append("Treat small samples as directional; this report does not calculate statistical significance.")
-            messagebox.showinfo("A/B experiment report", "\\n".join(lines))
+            messagebox.showinfo("A/B experiment report", "\n".join(lines))
         except Exception as exc:
             messagebox.showerror("Could not build A/B report", str(exc))
 
