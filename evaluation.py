@@ -6,6 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from hybrid import build_collaborative_model, collaborative_scores
 from recommender import build_movie_texts
+from mmr import select_diverse_recommendations
 
 
 @dataclass
@@ -89,6 +90,8 @@ def evaluate_recommenders(
     min_train_ratings=3,
     content_weight=0.65,
     max_users=None,
+    mmr_weights=(0.2, 0.35, 0.5),
+    mmr_candidate_pool=100,
 ):
     """
     Per-user temporal holdout evaluation.
@@ -101,6 +104,13 @@ def evaluate_recommenders(
         raise ValueError("k must be at least 1.")
     if not 0 <= content_weight <= 1:
         raise ValueError("content_weight must be between 0 and 1.")
+    mmr_weights = tuple(float(weight) for weight in mmr_weights)
+    if not mmr_weights or any(not 0 <= weight <= 1 for weight in mmr_weights):
+        raise ValueError("mmr_weights must contain values between 0 and 1.")
+    if len(set(mmr_weights)) != len(mmr_weights):
+        raise ValueError("mmr_weights must not contain duplicates.")
+    if mmr_candidate_pool < k:
+        raise ValueError("mmr_candidate_pool must be at least k.")
     if not {"userId", "movieId", "rating", "timestamp"}.issubset(ratings.columns):
         raise ValueError("ratings must contain userId, movieId, rating, and timestamp.")
     if not {"movieId", "tmdbId"}.issubset(links.columns):
@@ -158,6 +168,8 @@ def evaluate_recommenders(
     content_rows = []
     hybrid_rows = []
     user_details = []
+    mmr_rows = {weight: [] for weight in mmr_weights}
+    mmr_diversity_rows = {weight: [] for weight in mmr_weights}
     test_by_user = relevant_test.groupby("userId")
 
     for user_id, group in eligible:
@@ -213,6 +225,28 @@ def evaluate_recommenders(
         if content_metric is None or hybrid_metric is None:
             continue
 
+        shortlist_size = min(len(candidate_indices), max(k, mmr_candidate_pool))
+        shortlist_positions = np.argsort(candidate_hybrid)[::-1][:shortlist_size]
+        shortlist_indices = candidate_indices[shortlist_positions]
+        shortlist = movies.iloc[shortlist_indices].copy()
+        shortlist["evaluation_score"] = candidate_hybrid[shortlist_positions]
+        mmr_user_metrics = {}
+        for weight in mmr_weights:
+            diverse = select_diverse_recommendations(
+                shortlist, embedding_matrix, top_k=k,
+                diversity_weight=weight, relevance_column="evaluation_score",
+            )
+            diverse_indices = diverse.index.to_numpy(dtype=int)
+            diverse_ids = movie_ids[diverse_indices]
+            metric = _ranking_metrics(diverse_ids, relevant_ids, k)
+            if metric is not None:
+                mmr_rows[weight].append(metric)
+                mmr_diversity_rows[weight].append(
+                    intra_list_diversity(diverse_indices, embedding_matrix)
+                )
+                mmr_user_metrics[f"mmr_{weight:.2f}_ndcg"] = metric["ndcg"]
+                mmr_user_metrics[f"mmr_{weight:.2f}_ild"] = mmr_diversity_rows[weight][-1]
+
         content_rows.append(content_metric)
         hybrid_rows.append(hybrid_metric)
         user_details.append({
@@ -222,6 +256,7 @@ def evaluate_recommenders(
             "hybrid_hit": hybrid_metric["hit_rate"],
             "content_ndcg": content_metric["ndcg"],
             "hybrid_ndcg": hybrid_metric["ndcg"],
+            **mmr_user_metrics,
         })
 
     if not content_rows:
@@ -232,6 +267,16 @@ def evaluate_recommenders(
         "relevance_threshold": relevance_threshold,
         "content_based": asdict(_aggregate(content_rows)),
         "hybrid": asdict(_aggregate(hybrid_rows)),
+        "mmr": {
+            f"{weight:.2f}": {
+                "ranking": asdict(_aggregate(mmr_rows[weight])),
+                "intra_list_diversity": float(np.mean(mmr_diversity_rows[weight]))
+                if mmr_diversity_rows[weight] else 0.0,
+                "users_evaluated": len(mmr_rows[weight]),
+                "candidate_pool": min(mmr_candidate_pool, len(movie_ids)),
+            }
+            for weight in mmr_weights
+        },
         "improvement": {
             metric: (
                 _aggregate(hybrid_rows).__dict__[metric]

@@ -213,3 +213,18 @@ MMR = (1 - diversity_weight) * relevance - diversity_weight * redundancy
 The GUI currently uses diversity_weight=0.35. Set it to 0 for relevance-only ranking; larger values place more emphasis on diversity. Relevance is taken from the best available score in this order: taste-profile, personalized feedback, hybrid, then semantic similarity. Embedding vectors are reused from the existing cache, so no additional model or embedding pass is needed.
 
 MMR improves within-list diversity; it does not by itself establish that recommendations are novel or better-liked. Those outcomes should be measured in offline evaluation and user feedback.
+
+
+### MMR evaluation and parameter sweep
+
+The evaluation runner also compares hybrid ranking with MMR reranking at several diversity weights and reports Intra-List Diversity (ILD), the mean pairwise cosine distance among recommended movie embeddings. MMR only reranks a relevance-based shortlist (100 candidates by default), avoiding an expensive all-catalogue pairwise similarity calculation.
+
+Run the default sweep:
+
+```bash
+python evaluate.py --k 10 --mmr-weights 0.20,0.35,0.50 --mmr-candidate-pool 100
+```
+
+Use `--mmr-weights` to compare other values between 0 and 1, and `--mmr-candidate-pool` to change the reranking shortlist size (it must be at least K). The JSON summary includes each weight's ranking metrics, ILD, and evaluated-user count; the per-user CSV includes NDCG and ILD for each tested weight.
+
+Choose a weight by considering both ranking quality (especially NDCG@K/MAP@K) and diversity (ILD). A higher ILD alone is not evidence of better recommendations.
