@@ -29,3 +29,20 @@ def test_aggregate_averages_user_metrics():
     assert result.users_evaluated == 2
     assert result.precision == 0.5
     assert result.ndcg == 0.5
+
+
+def test_intra_list_diversity_is_zero_for_identical_embeddings():
+    from evaluation import intra_list_diversity
+    embeddings = np.array([[1.0, 0.0], [1.0, 0.0]], dtype=np.float32)
+    assert intra_list_diversity([0, 1], embeddings) == 0.0
+
+
+def test_intra_list_diversity_rewards_dissimilar_items():
+    from evaluation import intra_list_diversity
+    embeddings = np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+    assert intra_list_diversity([0, 1], embeddings) == 1.0
+
+
+def test_intra_list_diversity_handles_short_lists():
+    from evaluation import intra_list_diversity
+    assert intra_list_diversity([0], np.array([[1.0, 0.0]])) == 0.0

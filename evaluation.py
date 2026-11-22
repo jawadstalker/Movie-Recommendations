@@ -51,6 +51,19 @@ def _ranking_metrics(recommendations, relevant_items, k):
     }
 
 
+def intra_list_diversity(item_indices, embeddings):
+    """Mean pairwise cosine distance for a ranked list of embedding row indices."""
+    indices = [int(index) for index in item_indices]
+    if len(indices) < 2:
+        return 0.0
+    vectors = np.asarray(embeddings, dtype=np.float32)
+    if vectors.ndim != 2 or any(index < 0 or index >= len(vectors) for index in indices):
+        raise ValueError("Embedding indices must refer to valid rows in a 2D embedding matrix.")
+    similarities = cosine_similarity(vectors[indices])
+    upper = similarities[np.triu_indices(len(indices), k=1)]
+    return float(np.mean(1.0 - np.clip(upper, -1.0, 1.0)))
+
+
 def _aggregate(rows):
     if not rows:
         return RankingMetrics(0, 0, 0, 0, 0, 0)
