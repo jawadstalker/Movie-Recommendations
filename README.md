@@ -202,3 +202,14 @@ Each recommendation card now includes a **Why this movie?** section. Reasons are
 - Collaborative-filtering score, when the optional MovieLens model has a prediction for the candidate.
 
 Explanations are deterministic and evidence-based; they do not use an LLM or invent reasons. A signal is omitted when the required evidence is unavailable. Similarity and collaborative values are ranking signals, not probabilities of liking a movie.
+
+
+## Diversity-aware ranking (MMR)
+
+After relevance and personalization scoring, the desktop app applies Maximal Marginal Relevance (MMR) to select a diverse top-k list. At each step, MMR balances a candidate's relevance with its maximum cosine similarity to movies already selected:
+
+MMR = (1 - diversity_weight) * relevance - diversity_weight * redundancy
+
+The GUI currently uses diversity_weight=0.35. Set it to 0 for relevance-only ranking; larger values place more emphasis on diversity. Relevance is taken from the best available score in this order: taste-profile, personalized feedback, hybrid, then semantic similarity. Embedding vectors are reused from the existing cache, so no additional model or embedding pass is needed.
+
+MMR improves within-list diversity; it does not by itself establish that recommendations are novel or better-liked. Those outcomes should be measured in offline evaluation and user feedback.

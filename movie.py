@@ -18,6 +18,7 @@ from feedback import (
 )
 from taste_profile import build_taste_profile, apply_taste_profile, describe_taste_profile
 from explainability import explain_recommendations
+from mmr import select_diverse_recommendations
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -116,7 +117,11 @@ class MovieApp:
             feedback = get_user_feedback(self._active_profile())
             results = apply_feedback(results, self.embeddings, feedback, top_k=len(results))
             profile = build_taste_profile(self.movies, feedback)
-            results = apply_taste_profile(results, profile, top_k=self.count.get())
+            results = apply_taste_profile(results, profile, top_k=len(results))
+            results = select_diverse_recommendations(
+                results, self.embeddings, top_k=self.count.get(),
+                diversity_weight=0.35,
+            )
             results = explain_recommendations(
                 results, self.movies, self.embeddings,
                 feedback=feedback, taste_profile=profile,
