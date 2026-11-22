@@ -190,3 +190,15 @@ The local recommender derives a dynamic metadata profile from each local profile
 - The profile is rebuilt from the local feedback file when needed; no model retraining or additional large model is required.
 
 The profile is an interpretable preference summary based only on explicit movie feedback.
+
+
+## Explainable recommendations
+
+Each recommendation card now includes a **Why this movie?** section. Reasons are generated from signals actually available to the ranking pipeline:
+
+- Semantic similarity to the current natural-language query.
+- Matching genres, cast/directors, and story keywords from the user's explicit taste profile.
+- Embedding similarity to a previously liked movie, when such feedback exists.
+- Collaborative-filtering score, when the optional MovieLens model has a prediction for the candidate.
+
+Explanations are deterministic and evidence-based; they do not use an LLM or invent reasons. A signal is omitted when the required evidence is unavailable. Similarity and collaborative values are ranking signals, not probabilities of liking a movie.

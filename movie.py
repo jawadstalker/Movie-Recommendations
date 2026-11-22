@@ -17,6 +17,7 @@ from feedback import (
     record_feedback,
 )
 from taste_profile import build_taste_profile, apply_taste_profile, describe_taste_profile
+from explainability import explain_recommendations
 
 BG = "#edf2f4"
 ACCENT = "#ff9f1c"
@@ -116,6 +117,10 @@ class MovieApp:
             results = apply_feedback(results, self.embeddings, feedback, top_k=len(results))
             profile = build_taste_profile(self.movies, feedback)
             results = apply_taste_profile(results, profile, top_k=self.count.get())
+            results = explain_recommendations(
+                results, self.movies, self.embeddings,
+                feedback=feedback, taste_profile=profile,
+            )
             self.show_results(results)
         except Exception as exc:
             messagebox.showerror("Recommendation error", str(exc))
@@ -164,6 +169,15 @@ class MovieApp:
             ttk.Label(details, text=f"Recommendation score: {score:.1%} · {method}", foreground="#555").pack(anchor="w", pady=(3, 6))
             overview = str(movie.get("overview", "") or "No overview available.")
             ttk.Label(details, text=overview, wraplength=650, justify="left").pack(anchor="w")
+            reasons = movie.get("explanations", [])
+            if isinstance(reasons, list) and reasons:
+                explanation_box = ttk.LabelFrame(details, text="Why this movie?", padding=8)
+                explanation_box.pack(fill="x", pady=(7, 0))
+                for reason in reasons:
+                    ttk.Label(
+                        explanation_box, text="• " + str(reason),
+                        wraplength=630, justify="left",
+                    ).pack(anchor="w", pady=1)
             feedback_status = tk.StringVar(value="")
             actions = ttk.Frame(details)
             actions.pack(anchor="w", pady=(8, 0))
